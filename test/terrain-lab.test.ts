@@ -2,14 +2,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
 import sharp from 'sharp';
 import { buildBladeVertexData } from '../src/blade-geometry.js';
 import { buildBroadleafVertexData, generateBroadleafGradientData } from '../src/broadleaf-geometry.js';
 import { buildFlowerDiscVertexData } from '../src/flower-geometry.js';
 import { bladeDensityProbability, perlinNoise2D, sampleBladePatch, sampleBladeTiltPatch } from '../src/blade-patch-noise.js';
-import { TERRAIN_TEXTURE_CATALOG } from '../src/catalog.js';
 import { FrameCadenceTracker, passesSixtyHertzCadence } from '../src/frame-cadence.js';
 import { cameraRelativeGroundDirection, encodeCrushDirection } from '../src/interaction-motion.js';
 import {
@@ -69,10 +67,9 @@ describe('independent terrain laboratory', () => {
     assert.equal(passesSixtyHertzCadence(passing.snapshot()), false);
   });
 
-  it('catalogs every current v4 terrain surface without duplicate ids or missing files', () => {
-    assert.equal(TERRAIN_TEXTURE_CATALOG.length, 4);
-    assert.equal(new Set(TERRAIN_TEXTURE_CATALOG.map((entry) => entry.id)).size, TERRAIN_TEXTURE_CATALOG.length);
-    for (const entry of TERRAIN_TEXTURE_CATALOG) assert.equal(fs.existsSync(fileURLToPath(entry.url)), true, entry.id);
+  it('uses generated ground color without bundled terrain surface images', () => {
+    assert.equal(fs.existsSync('src/assets/terrain'), false);
+    assert.doesNotMatch(fs.readFileSync('src/scene.ts', 'utf8'), /assets\/terrain|textureById/);
   });
 
   it('enables guided stages cumulatively while retaining edited values', () => {
@@ -574,11 +571,11 @@ describe('independent terrain laboratory', () => {
 
   it('reports shader sampling cost from the active stages', () => {
     const config = createDefaultTerrainConfig();
-    assert.equal(estimateTextureSamples(config), 4);
+    assert.equal(estimateTextureSamples(config), 1);
     config.stages.randomization = true;
     config.stages.surfaceBlend = true;
     config.stages.detailPbr = true;
-    assert.equal(estimateTextureSamples(config), 19);
+    assert.equal(estimateTextureSamples(config), 4);
     assert.equal(shaderVariantKey(config, true), 'production-reference');
   });
 

@@ -12,7 +12,6 @@ import { TERRAIN_DEBUG_VIEWS, type TerrainDebugView, type TerrainLabConfigV25, s
 
 interface TerrainLabDefines extends MaterialDefines {
   TERRAIN_LAB_ACTIVE: boolean;
-  TERRAIN_LAB_BOMBING: boolean;
   TERRAIN_LAB_FBM: boolean;
   TERRAIN_LAB_WARP: boolean;
   TERRAIN_LAB_SURFACE_BLEND: boolean;
@@ -59,7 +58,6 @@ export class TerrainLabMaterialPlugin extends MaterialPluginBase {
 
   constructor(
     private material: PBRMaterial,
-    private slots: [Texture, Texture, Texture, Texture],
     private sharedDetail: Texture,
     private groundTexture: Texture,
     config: TerrainLabConfigV25,
@@ -70,7 +68,6 @@ export class TerrainLabMaterialPlugin extends MaterialPluginBase {
       176,
       {
         TERRAIN_LAB_ACTIVE: true,
-        TERRAIN_LAB_BOMBING: false,
         TERRAIN_LAB_FBM: false,
         TERRAIN_LAB_WARP: false,
         TERRAIN_LAB_SURFACE_BLEND: false,
@@ -93,13 +90,11 @@ export class TerrainLabMaterialPlugin extends MaterialPluginBase {
 
   update(
     config: TerrainLabConfigV25,
-    slots: [Texture, Texture, Texture, Texture],
     debugView: TerrainDebugView,
     referenceMode: boolean,
   ): void {
     const nextVariant = shaderVariantKey(config, referenceMode);
     this.config = structuredClone(config);
-    this.slots = slots;
     this.debugView = debugView;
     this.referenceMode = referenceMode;
     if (nextVariant !== this.variant) {
@@ -111,7 +106,6 @@ export class TerrainLabMaterialPlugin extends MaterialPluginBase {
   override prepareDefines(defines: MaterialDefines): void {
     const target = defines as TerrainLabDefines;
     target.TERRAIN_LAB_ACTIVE = !this.referenceMode;
-    target.TERRAIN_LAB_BOMBING = !this.referenceMode && this.config.stages.randomization;
     target.TERRAIN_LAB_FBM = !this.referenceMode && this.config.stages.fbm;
     target.TERRAIN_LAB_WARP = !this.referenceMode && this.config.stages.warp;
     target.TERRAIN_LAB_SURFACE_BLEND = !this.referenceMode && this.config.stages.surfaceBlend;
@@ -126,15 +120,15 @@ export class TerrainLabMaterialPlugin extends MaterialPluginBase {
   }
 
   override getSamplers(samplers: string[]): void {
-    samplers.push('labSurface0', 'labSurface1', 'labSurface2', 'labSurface3', 'labDetail', 'labGround');
+    samplers.push('labDetail', 'labGround');
   }
 
   override getActiveTextures(activeTextures: Texture[]): void {
-    activeTextures.push(...this.slots, this.sharedDetail, this.groundTexture);
+    activeTextures.push(this.sharedDetail, this.groundTexture);
   }
 
   override hasTexture(texture: Texture): boolean {
-    return this.slots.includes(texture) || texture === this.sharedDetail || texture === this.groundTexture;
+    return texture === this.sharedDetail || texture === this.groundTexture;
   }
 
   override getUniforms(): { externalUniforms?: string[] } {
@@ -149,10 +143,6 @@ export class TerrainLabMaterialPlugin extends MaterialPluginBase {
   ): void {
     const effect = subMesh.effect;
     if (!effect || this.referenceMode) return;
-    effect.setTexture('labSurface0', this.slots[0]);
-    effect.setTexture('labSurface1', this.slots[1]);
-    effect.setTexture('labSurface2', this.slots[2]);
-    effect.setTexture('labSurface3', this.slots[3]);
     effect.setTexture('labDetail', this.sharedDetail);
     effect.setTexture('labGround', this.groundTexture);
     effect.setFloat('labSeed', this.config.seed);
@@ -200,7 +190,6 @@ export class TerrainLabMaterialPlugin extends MaterialPluginBase {
     return {
       CUSTOM_FRAGMENT_DEFINITIONS: `
 #ifdef TERRAIN_LAB_ACTIVE
-uniform sampler2D labSurface0;uniform sampler2D labSurface1;uniform sampler2D labSurface2;uniform sampler2D labSurface3;
 uniform sampler2D labDetail;uniform sampler2D labGround;
 uniform float labSeed;uniform float labDebugView;
 uniform vec4 labBombingA;uniform vec4 labBombingB;
@@ -246,31 +235,6 @@ float labFbmNoise(vec2 p){
 #endif
   return sum/max(normalizer,0.0001);
 }
-vec3 labBombCell(sampler2D source,vec2 baseUv,vec2 cell,float salt){
-  vec2 random=labHash22(cell,salt);float scale=mix(labBombingA.y,labBombingA.z,random.x);
-  vec2 uv=baseUv*scale+(random-0.5)*labBombingA.w;
-  if(labBombingB.y>0.5&&random.y>0.5)uv.x=-uv.x;
-  if(labBombingB.x>0.5){
-    float quadrant=floor(random.y*4.0);vec2 centered=fract(uv)-0.5;
-    if(quadrant==1.0)centered=vec2(-centered.y,centered.x);
-    else if(quadrant==2.0)centered=-centered;
-    else if(quadrant==3.0)centered=vec2(centered.y,-centered.x);
-    uv=floor(uv)+centered+0.5;
-  }
-  return pow(max(texture2D(source,uv).rgb,vec3(0.0)),vec3(2.2));
-}
-vec3 labSample(sampler2D source,vec2 uv,float tiling,float salt){
-  vec2 tiled=uv*tiling;
-#ifdef TERRAIN_LAB_BOMBING
-  vec2 grid=uv*labBombingA.x,cell=floor(grid),f=fract(grid);f=f*f*(3.0-2.0*f);
-  vec3 a=mix(labBombCell(source,tiled,cell,salt),labBombCell(source,tiled,cell+vec2(1.0,0.0),salt),f.x);
-  vec3 b=mix(labBombCell(source,tiled,cell+vec2(0.0,1.0),salt),labBombCell(source,tiled,cell+vec2(1.0),salt),f.x);
-  vec3 base=pow(max(texture2D(source,tiled).rgb,vec3(0.0)),vec3(2.2));
-  return mix(base,mix(a,b,f.y),labBombingB.z);
-#else
-  return pow(max(texture2D(source,tiled).rgb,vec3(0.0)),vec3(2.2));
-#endif
-}
 #endif`,
       CUSTOM_FRAGMENT_BEFORE_LIGHTS: `
 #ifdef TERRAIN_LAB_ACTIVE
@@ -283,10 +247,7 @@ secondary=labFbmNoise(labUv*labFbmParams.x*1.73+vec2(23.4,9.1));
 vec2 warpVector=vec2(labValueNoise(labUv*labWarpParams.x),labValueNoise(labUv*labWarpParams.x*labWarpParams.z+19.7))-0.5;
 labUv+=warpVector*labWarpParams.y;
 #endif
-vec3 slot0=labSample(labSurface0,labUv,labSlot0.x,11.0)*labTint0;
-vec3 slot1=labSample(labSurface1,labUv,labSlot1.x,31.0)*labTint1;
-vec3 slot2=labSample(labSurface2,labUv,labSlot2.x,53.0)*labTint2;
-vec3 slot3=labSample(labSurface3,labUv,labSlot3.x,79.0)*labTint3;
+vec3 slot0=labTint0;vec3 slot1=labTint1;vec3 slot2=labTint2;vec3 slot3=labTint3;
 vec4 weights=vec4(1.0,0.0,0.0,0.0);
 #ifdef TERRAIN_LAB_SURFACE_BLEND
 float edge=(labValueNoise(labUv*labFbmParams.x*3.1+41.0)-0.5)*labBlendParams.y;

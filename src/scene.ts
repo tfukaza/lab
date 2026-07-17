@@ -35,7 +35,7 @@ import { BladeLightingPlugin } from './blade-lighting-plugin.js';
 import { bladeDensityProbability, sampleBladePatch, sampleBladeTiltPatch } from './blade-patch-noise.js';
 import { createGroundColorSampler, generateGroundTextureData } from './ground-color.js';
 import { cameraRelativeGroundDirection, encodeCrushDirection } from './interaction-motion.js';
-import { TERRAIN_REFERENCE_ASSETS, textureById } from './catalog.js';
+import { TERRAIN_REFERENCE_ASSETS } from './catalog.js';
 import { estimateTextureSamples, shaderVariantKey, type TerrainDebugView, type TerrainLabConfigV25 } from './config.js';
 import { TerrainLabMaterialPlugin } from './terrain-plugin.js';
 import { FrameCadenceTracker, passesSixtyHertzCadence } from './frame-cadence.js';
@@ -1314,8 +1314,6 @@ export class TerrainLabScene {
     this.productionAlbedo = this.loadTexture(TERRAIN_REFERENCE_ASSETS.productionAlbedo, true);
     this.productionNormal = this.loadTexture(TERRAIN_REFERENCE_ASSETS.productionNormal, false);
     this.productionOrm = this.loadTexture(TERRAIN_REFERENCE_ASSETS.productionOrm, false);
-    const slots = this.loadSlotTextures(initialConfig);
-
     this.groundKey = JSON.stringify([initialConfig.seed, initialConfig.ground]);
     const groundBuildStartedAt = performance.now();
     const initialGroundData = generateGroundTextureData(
@@ -1335,15 +1333,13 @@ export class TerrainLabScene {
       false,
       Texture.BILINEAR_SAMPLINGMODE,
     );
-
     this.material = new PBRMaterial('terrain-lab-material', this.scene);
     this.material.albedoColor = Color3.White();
-    this.material.albedoTexture = slots[0];
+    this.material.albedoTexture = this.groundTexture;
     this.material.metallic = 0;
     this.material.roughness = initialConfig.pbr.baseRoughness;
     this.plugin = new TerrainLabMaterialPlugin(
       this.material,
-      slots,
       this.sharedDetail,
       this.groundTexture,
       initialConfig,
@@ -1646,20 +1642,10 @@ export class TerrainLabScene {
     for (const mesh of renderMeshes) mesh.computeWorldMatrix(true);
   }
 
-  private loadSlotTextures(config: TerrainLabConfigV25): [Texture, Texture, Texture, Texture] {
-    return config.slots.map((slot) => this.loadTexture(textureById(slot.textureId).url, true)) as [
-      Texture,
-      Texture,
-      Texture,
-      Texture,
-    ];
-  }
-
   apply(config: TerrainLabConfigV25, debugView: TerrainDebugView, referenceMode: boolean): void {
     this.config = structuredClone(config);
     this.debugView = debugView;
     this.referenceMode = referenceMode;
-    const slots = this.loadSlotTextures(config);
     const groundKey = JSON.stringify([config.seed, config.ground]);
     if (groundKey !== this.groundKey) {
       this.groundKey = groundKey;
@@ -1668,8 +1654,8 @@ export class TerrainLabScene {
       this.groundTexture.update(groundData);
       this.lastGroundBuildMs = performance.now() - groundBuildStartedAt;
     }
-    this.plugin.update(config, slots, debugView, referenceMode);
-    this.material.albedoTexture = referenceMode ? this.productionAlbedo : slots[0];
+    this.plugin.update(config, debugView, referenceMode);
+    this.material.albedoTexture = referenceMode ? this.productionAlbedo : this.groundTexture;
     this.material.bumpTexture = referenceMode ? this.productionNormal : null;
     if (this.material.bumpTexture) this.material.bumpTexture.level = 0.55;
     this.material.metallicTexture = referenceMode ? this.productionOrm : null;

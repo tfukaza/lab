@@ -679,8 +679,7 @@ export function setNumericValue(
 }
 
 export function estimateTextureSamples(config: TerrainLabConfigV25): number {
-  const surfaces = config.stages.surfaceBlend ? 4 : 1;
-  let samples = surfaces * (config.stages.randomization ? 4 : 1);
+  let samples = 1;
   if (config.stages.detailPbr) samples += 3;
   return samples;
 }
